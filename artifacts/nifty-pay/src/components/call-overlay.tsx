@@ -15,7 +15,6 @@ import {
   MicOff,
   Video,
   VideoOff,
-  Languages,
 } from 'lucide-react';
 import { useAgoraCall } from '@/contexts/agora-call';
 import { useToast } from '@/hooks/use-toast';
@@ -120,7 +119,11 @@ function CallUI() {
           aria-label="Open live translator"
           title="Live Translator"
         >
-          <Languages className="w-6 h-6" />
+          <img
+            src="/langpretation.png"
+            alt="Langpretation"
+            className="h-8 w-8 rounded-full object-cover"
+          />
         </button>
 
         {callKind === 'audio' && (

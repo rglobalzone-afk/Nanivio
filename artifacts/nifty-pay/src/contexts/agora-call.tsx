@@ -682,7 +682,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
           if (call?.channel === event.callChannel && callKindRef.current === 'audio') {
             setVideoUpgradeRequest({
               fromUserId: String(event.fromUserId),
-              fromName: event.fromName ?? call.otherName,
+              fromName: event.fromName ?? call?.otherName ?? 'Someone',
             });
           }
           break;

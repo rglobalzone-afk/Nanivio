@@ -25,7 +25,7 @@ import { RealtimeTranslatorPanel } from '@/components/realtime-translator';
 function CallUI() {
   const {
     activeCall, callKind, remoteJoined, remoteVideoTrack, localVideoTrack,
-    micOn, camOn, toggleMic, toggleCamera, endCall, billing,
+    micOn, camOn, toggleMic, toggleCamera, requestVideoUpgrade, endCall, billing,
   } = useAgoraCall();
   const remoteRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
@@ -123,6 +123,17 @@ function CallUI() {
           <Languages className="w-6 h-6" />
         </button>
 
+        {callKind === 'audio' && (
+          <button
+            onClick={() => void requestVideoUpgrade()}
+            className="w-14 h-14 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors"
+            aria-label="Request video"
+            title="Request video"
+          >
+            <Video className="w-6 h-6" />
+          </button>
+        )}
+
         <button
           onClick={() => void toggleMic()}
           className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${micOn ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-white text-black'}`}
@@ -158,7 +169,15 @@ function CallUI() {
 
 /* ─── exported overlay — always rendered inside AppLayout ─── */
 export function CallOverlay() {
-  const { incomingCall, activeCall, acceptCall, declineCall } = useAgoraCall();
+  const {
+    incomingCall,
+    activeCall,
+    videoUpgradeRequest,
+    acceptCall,
+    declineCall,
+    acceptVideoUpgrade,
+    declineVideoUpgrade,
+  } = useAgoraCall();
   const { toast } = useToast();
 
   const callerName = incomingCall?.fromName ?? 'Someone';
@@ -234,6 +253,34 @@ export function CallOverlay() {
       {activeCall && (
         <div className="fixed inset-0 z-[190] bg-black flex flex-col">
           <CallUI />
+        </div>
+      )}
+
+      {videoUpgradeRequest && activeCall && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-slate-950 p-6 text-white shadow-2xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/20">
+              <Video className="h-7 w-7 text-primary" />
+            </div>
+            <h2 className="text-center text-xl font-bold">Video request</h2>
+            <p className="mt-2 text-center text-sm text-white/65">
+              {videoUpgradeRequest.fromName} would like to turn on video.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={declineVideoUpgrade}
+                className="flex-1 rounded-xl bg-white/10 px-4 py-3 font-semibold text-white/80 hover:bg-white/15"
+              >
+                Stay on audio
+              </button>
+              <button
+                onClick={() => void acceptVideoUpgrade()}
+                className="flex-1 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                Turn on video
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

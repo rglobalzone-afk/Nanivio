@@ -694,7 +694,7 @@ function ChatInner({
             }
 
             await agoraCall.startCall(
-              "video",
+              "audio",
               String(ch.id),
               user.id,
               user.name ?? "Call"

@@ -1,7 +1,7 @@
 /**
  * Agora calling routes:
  *  - GET  /agora/token   → RTC token for joining a call channel
- *  - POST /agora/signal  → relay call signaling (invite/accept/reject/end)
+ *  - POST /agora/signal  → relay call signaling (invite/accept/reject/end/video upgrade)
  *    to the other user's devices via Stream Chat custom user events.
  *
  * Authorization model: every call is bound to a Stream chat channel
@@ -19,7 +19,16 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-const SIGNAL_TYPES = new Set(["call_invite", "call_accept", "call_reject", "call_end", "call_cancel"]);
+const SIGNAL_TYPES = new Set([
+  "call_invite",
+  "call_accept",
+  "call_reject",
+  "call_end",
+  "call_cancel",
+  "video_upgrade_request",
+  "video_upgrade_accept",
+  "video_upgrade_decline",
+]);
 const CHAT_ID_RE = /^[a-zA-Z0-9!_-]{1,60}$/;
 const CHANNEL_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 

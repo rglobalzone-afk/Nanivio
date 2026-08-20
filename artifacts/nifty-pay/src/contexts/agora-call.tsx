@@ -33,6 +33,11 @@ export interface IncomingCall {
   fromName:   string;
 }
 
+export interface VideoUpgradeRequest {
+  fromUserId: string;
+  fromName: string;
+}
+
 export interface CallBillingRequest {
   expertUserId: number;
   ratePerMinute: number;
@@ -52,6 +57,7 @@ export interface AgoraCallCtx {
   /** true once signaling is connected (chat client ready) */
   ready:        boolean;
   incomingCall: IncomingCall | null;
+  videoUpgradeRequest: VideoUpgradeRequest | null;
   /** non-null while a call is active (dialing or connected) */
   activeCall:   { channel: string; chatId: string; otherUserId: string; otherName: string } | null;
   callKind:     'audio' | 'video';
@@ -70,6 +76,9 @@ export interface AgoraCallCtx {
   setOriginalMicMuted: (muted: boolean) => Promise<void>;
   toggleMic:    () => Promise<void>;
   toggleCamera: () => Promise<void>;
+  requestVideoUpgrade: () => Promise<void>;
+  acceptVideoUpgrade: () => Promise<void>;
+  declineVideoUpgrade: () => void;
   startCall:   (type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string, billing?: CallBillingRequest) => Promise<void>;
   acceptCall:  () => Promise<void>;
   declineCall: () => void;
@@ -77,7 +86,7 @@ export interface AgoraCallCtx {
 }
 
 const Ctx = createContext<AgoraCallCtx>({
-  ready: false, incomingCall: null, activeCall: null, callKind: 'video',
+  ready: false, incomingCall: null, videoUpgradeRequest: null, activeCall: null, callKind: 'video',
   remoteJoined: false, remoteVideoTrack: null, localVideoTrack: null,
   micOn: true, camOn: true, billing: null,
   getMicrophoneTrack: () => null,
@@ -86,6 +95,7 @@ const Ctx = createContext<AgoraCallCtx>({
   unpublishTranslatedAudio: async () => {},
   setOriginalMicMuted: async () => {},
   toggleMic: async () => {}, toggleCamera: async () => {},
+  requestVideoUpgrade: async () => {}, acceptVideoUpgrade: async () => {}, declineVideoUpgrade: () => {},
   startCall: async () => {}, acceptCall: async () => {},
   declineCall: () => {}, endCall: () => {},
 });
@@ -117,6 +127,7 @@ function sendSignal(toUserId: string | number, event: { type: string; channel: s
 export function AgoraCallProvider({ children }: { children: ReactNode }) {
   const { streamData, chatClient } = useStreamChat();
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [videoUpgradeRequest, setVideoUpgradeRequest] = useState<VideoUpgradeRequest | null>(null);
   const [activeCall, setActiveCall] = useState<{ channel: string; chatId: string; otherUserId: string; otherName: string } | null>(null);
   const [callKind, setCallKind] = useState<'audio' | 'video'>('video');
   const [remoteJoined, setRemoteJoined] = useState(false);
@@ -136,6 +147,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   // Refs mirroring state for use inside event handlers
   const activeCallRef = useRef(activeCall);
   activeCallRef.current = activeCall;
+  const callKindRef = useRef(callKind);
+  callKindRef.current = callKind;
   const incomingCallRef = useRef(incomingCall);
   incomingCallRef.current = incomingCall;
 
@@ -306,6 +319,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     setLocalVideoTrack(null);
     setRemoteVideoTrack(null);
     setRemoteJoined(false);
+    setVideoUpgradeRequest(null);
     const c = clientRef.current;
     clientRef.current = null;
     if (c) { try { await c.leave(); } catch {} c.removeAllListeners(); }
@@ -545,6 +559,65 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     setCamOn(next);
   }, [camOn]);
 
+  /** Publish a camera without leaving the existing audio call. */
+  const upgradeLocalVideo = useCallback(async () => {
+    if (camTrackRef.current || !clientRef.current) {
+      setCallKind('video');
+      return;
+    }
+    const camera = await AgoraRTC.createCameraVideoTrack({
+      encoderConfig: { width: 640, height: 480, frameRate: 24 },
+    });
+    try {
+      await clientRef.current.publish(camera);
+      camTrackRef.current = camera;
+      setLocalVideoTrack(camera);
+      setCamOn(true);
+      setCallKind('video');
+    } catch (error) {
+      camera.close();
+      throw error;
+    }
+  }, []);
+
+  const requestVideoUpgrade = useCallback(async () => {
+    const ac = activeCallRef.current;
+    if (!ac || callKind === 'video') return;
+    await sendSignal(ac.otherUserId, {
+      type: 'video_upgrade_request',
+      channel: ac.channel,
+      chatId: ac.chatId,
+      kind: 'video',
+    });
+  }, [callKind]);
+
+  const acceptVideoUpgrade = useCallback(async () => {
+    const ac = activeCallRef.current;
+    const request = videoUpgradeRequest;
+    if (!ac || !request) return;
+    await upgradeLocalVideo();
+    setVideoUpgradeRequest(null);
+    await sendSignal(request.fromUserId, {
+      type: 'video_upgrade_accept',
+      channel: ac.channel,
+      chatId: ac.chatId,
+      kind: 'video',
+    });
+  }, [upgradeLocalVideo, videoUpgradeRequest]);
+
+  const declineVideoUpgrade = useCallback(() => {
+    const ac = activeCallRef.current;
+    const request = videoUpgradeRequest;
+    setVideoUpgradeRequest(null);
+    if (!ac || !request) return;
+    sendSignal(request.fromUserId, {
+      type: 'video_upgrade_decline',
+      channel: ac.channel,
+      chatId: ac.chatId,
+      kind: 'audio',
+    }).catch(() => {});
+  }, [videoUpgradeRequest]);
+
   /* ── signaling listeners on the Stream Chat websocket ── */
   useEffect(() => {
     if (!chatClient || !streamData) return;
@@ -604,24 +677,58 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
           }
           break;
         }
+        case 'video_upgrade_request': {
+          const call = activeCallRef.current;
+          if (call?.channel === event.callChannel && callKindRef.current === 'audio') {
+            setVideoUpgradeRequest({
+              fromUserId: String(event.fromUserId),
+              fromName: event.fromName ?? call.otherName,
+            });
+          }
+          break;
+        }
+        case 'video_upgrade_accept': {
+          if (activeCallRef.current?.channel === event.callChannel) {
+            void upgradeLocalVideo().catch((error) => {
+              toast({ title: 'Video upgrade failed', description: error?.message ?? 'Could not enable your camera.', variant: 'destructive' });
+            });
+          }
+          break;
+        }
+        case 'video_upgrade_decline': {
+          if (activeCallRef.current?.channel === event.callChannel) {
+            toast({ title: 'Video request declined', description: 'The other person chose to stay on audio.' });
+          }
+          break;
+        }
       }
     };
 
-    const subs = ['call_invite', 'call_accept', 'call_reject', 'call_cancel', 'call_end']
+    const subs = [
+      'call_invite',
+      'call_accept',
+      'call_reject',
+      'call_cancel',
+      'call_end',
+      'video_upgrade_request',
+      'video_upgrade_accept',
+      'video_upgrade_decline',
+    ]
       .map(t => chatClient.on(t as any, handler));
     return () => {
       subs.forEach(s => s.unsubscribe());
       stopTone();
       void teardownMedia();
     };
-  }, [chatClient, streamData?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chatClient, streamData?.userId, upgradeLocalVideo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Ctx.Provider value={{
-      ready: !!chatClient, incomingCall, activeCall, callKind,
+      ready: !!chatClient, incomingCall, videoUpgradeRequest, activeCall, callKind,
       remoteJoined, remoteVideoTrack, localVideoTrack, micOn, camOn, billing,
       getMicrophoneTrack, getRemoteAudioTrack, publishTranslatedAudio, unpublishTranslatedAudio, setOriginalMicMuted,
-      toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
+      toggleMic, toggleCamera, requestVideoUpgrade, acceptVideoUpgrade, declineVideoUpgrade,
+      startCall, acceptCall, declineCall, endCall,
     }}>
       {children}
     </Ctx.Provider>

@@ -7,6 +7,22 @@ function getCtx() {
 /** Short chime for incoming messages */
 export function playMessageNotification() {
   try {
+    const src = `${import.meta.env.BASE_URL}sounds/message-tone.wav`;
+    const audio = new Audio(src);
+    audio.volume = 1.0;
+    const played = audio.play();
+    if (played && typeof played.catch === 'function') {
+      played.catch(() => playGeneratedMessageNotification());
+    }
+    return;
+  } catch {
+    playGeneratedMessageNotification();
+  }
+}
+
+/** WebAudio fallback if the custom message tone cannot be played. */
+function playGeneratedMessageNotification() {
+  try {
     const ac = getCtx();
     const freqs = [880, 1100, 1320];
     freqs.forEach((f, i) => {

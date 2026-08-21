@@ -504,8 +504,8 @@ function InviteRequestBanner({
   );
 }
 
-/* ─── inner component (needs Chat ctx) ─── */
-function ChatInner({
+/* ─── connected shell ─── */
+function ChatConnected({
   streamData,
   onStartCall,
   onNewChat,
@@ -518,19 +518,20 @@ function ChatInner({
   onNewChat: () => void;
   onOpenCommunicationHub: () => void;
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
-  openChatRef: React.MutableRefObject<((user: SUser) => void) | null>;
+  openChatRef: React.MutableRefObject<((user: SUser) => Promise<StreamChannel | undefined>) | null>;
 }) {
-  const { client, channel: activeChannel, setActiveChannel } = useChatContext();
-  const [tick, setTick] = useState(0);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [addUserQuery, setAddUserQuery] = useState('');
-
-
-  const [showAddContact, setShowAddContact] = useState(false);
-  const [contactNv, setContactNv] = useState('');
-  const [contactName, setContactName] = useState('');
-
-
+  const { chatClient } = useStreamChat();
+  const agoraCall = useAgoraCall();
+  const { toast } = useToast();
+  const [showCommunicationHub, setShowCommunicationHub] = useState(false);
+  const [showNewChatFlow, setShowNewChatFlow] = useState(false);
+  const [communicationMode, setCommunicationMode] = useState<'chat' | 'call'>('chat');
+  const [needsPushOptIn, setNeedsPushOptIn] = useState(false);
+  useEffect(() => {
+    void ensurePushSubscription().finally(() => {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') setNeedsPushOptIn(true);
+    });
+  }, []);
   const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
     if (!agoraCall.ready) {
       toast({ title: 'Calls not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
@@ -644,7 +645,7 @@ function ChatInner({
           chatContainer: 'str-chat__container !flex !flex-col flex-1 min-h-0 overflow-hidden w-full',
         }}
       >
-        <ChatInner
+        <ChatContent
           onOpenCommunicationHub={() => setShowCommunicationHub(true)}
           streamData={streamData}
           onStartCall={handleStartCall}
@@ -714,25 +715,29 @@ function ChatInner({
   );
 }
 
-/* ─── page entry — reads persistent client from StreamChatProvider ─── */
-export default function ChatPage() {
-  const { streamData, chatClient } = useStreamChat();
-  const [needsPushOptIn, setNeedsPushOptIn] = useState(false);
-
-  // Subscribe this device to incoming-call push notifications.
-  // On iOS the permission prompt only works from a user tap, so when
-  // permission is still 'default' after the automatic attempt we show
-  // an explicit "Enable" banner instead.
-  useEffect(() => {
-    if (!streamData) return;
-    void ensurePushSubscription().finally(() => {
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default'
-          && 'serviceWorker' in navigator && 'PushManager' in window) {
-        setNeedsPushOptIn(true);
-      }
-    });
-  }, [streamData]);
-
+/* ─── chat content (must be rendered beneath Stream Chat's Chat provider) ─── */
+function ChatContent({
+  streamData,
+  onStartCall,
+  onOpenCommunicationHub,
+  onNewChat: _onNewChat,
+  setActiveChannelRef,
+  openChatRef,
+}: {
+  streamData: StreamData;
+  onStartCall: (type: 'audio' | 'video', ch: StreamChannel) => void;
+  onOpenCommunicationHub: () => void;
+  onNewChat: () => void;
+  setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
+  openChatRef: React.MutableRefObject<((user: SUser) => Promise<StreamChannel | undefined>) | null>;
+}) {
+  const { client, channel: activeChannel, setActiveChannel } = useChatContext();
+  const [tick, setTick] = useState(0);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [addUserQuery, setAddUserQuery] = useState('');
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [contactNv, setContactNv] = useState('');
+  const [contactName, setContactName] = useState('');
   const openDirectChat = useCallback(async (user: SUser) => {
     if (!client) return;
 
@@ -785,6 +790,7 @@ export default function ChatPage() {
 
     } catch (err: any) {
       console.error('Could not open chat', err);
+      return undefined;
     }
   }, [
     client,
@@ -1293,8 +1299,8 @@ export default function ChatPage() {
   );
 }
 
-/* ─── connected page — uses persistent clients from context providers ─── */
-function ChatConnected() {
+/* Legacy duplicate shell retained as a comment; the shell above is canonical.
+function LegacyChatConnected() {
   const { streamData: _sd, chatClient } = useStreamChat();
   const streamData = _sd!; // guaranteed by ChatPage guard
   const agoraCall = useAgoraCall();
@@ -1410,6 +1416,26 @@ function ChatConnected() {
       )}
       <ChatConnected />
     </>
+  );
+}
+*/
+
+export default function ChatPage() {
+  const { streamData, chatClient } = useStreamChat();
+  const setActiveChannelRef = useRef<((ch: StreamChannel | undefined) => void) | null>(null);
+  const openChatRef = useRef<((user: SUser) => Promise<StreamChannel | undefined>) | null>(null);
+  if (!streamData || !chatClient) {
+    return <div className="flex items-center justify-center h-full min-h-[60vh] text-sm text-[#64748b]">Connecting to chat…</div>;
+  }
+  return (
+    <ChatConnected
+      streamData={streamData}
+      onStartCall={() => {}}
+      onNewChat={() => {}}
+      onOpenCommunicationHub={() => {}}
+      setActiveChannelRef={setActiveChannelRef}
+      openChatRef={openChatRef}
+    />
   );
 }
 

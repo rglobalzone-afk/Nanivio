@@ -42,63 +42,38 @@ function playGeneratedMessageNotification() {
 
 /** Repeating ringtone. Returns a stop function. */
 export function createRingtone(type: 'incoming' | 'outgoing'): () => void {
-  // Preferred: real ringtone audio files (loud, phone-like). Falls back to
-  // WebAudio-generated tones if playback is blocked or the file fails.
-  const src = `${import.meta.env.BASE_URL}sounds/${type === 'incoming' ? 'ringtone-incoming' : 'ringback-outgoing'}.mp3`;
-  try {
-    const audio = new Audio(src);
-    audio.loop = true;
-    audio.volume = 1.0;
-    const played = audio.play();
-    if (played && typeof played.catch === 'function') {
-      let stopped = false;
-      let fallbackStop: (() => void) | null = null;
-      played.catch(() => { if (!stopped) fallbackStop = createOscRingtone(type); });
-      return () => {
-        stopped = true;
-        audio.pause();
-        audio.src = '';
-        fallbackStop?.();
-      };
-    }
-    return () => { audio.pause(); audio.src = ''; };
-  } catch {
-    return createOscRingtone(type);
-  }
+  // Calls use a short "too-too" cadence rather than one long sustained tone.
+  // Keeping this in WebAudio also makes the cadence consistent across browsers
+  // and avoids the long imported ringtone files sounding like a continuous note.
+  return createOscRingtone(type);
 }
 
-/** WebAudio fallback ringtone (used if audio file playback fails). */
+/** Repeating WebAudio "too-too" call cadence. */
 function createOscRingtone(type: 'incoming' | 'outgoing'): () => void {
   let live = true;
   function ring() {
     if (!live) return;
     try {
       const ac = getCtx();
-      if (type === 'incoming') {
-        // Two short bursts like a phone ring
-        [[440, 0, 0.35], [440, 0.45, 0.35]].forEach(([freq, delay, dur]) => {
-          const osc = ac.createOscillator();
-          const g = ac.createGain();
-          osc.connect(g); g.connect(ac.destination);
-          osc.frequency.value = freq as number;
-          const t = ac.currentTime + (delay as number);
-          g.gain.setValueAtTime(0.3, t);
-          g.gain.exponentialRampToValueAtTime(0.001, t + (dur as number));
-          osc.start(t); osc.stop(t + (dur as number));
-        });
-        setTimeout(ring, 3200);
-      } else {
-        // Single steady tone for outgoing
+      if (ac.state === 'suspended') void ac.resume();
+      // Two clearly separated short tones: too ... too.
+      const cadence = type === 'incoming'
+        ? [[660, 0], [660, 0.34]]
+        : [[520, 0], [520, 0.34]];
+      cadence.forEach(([freq, delay]) => {
         const osc = ac.createOscillator();
         const g = ac.createGain();
         osc.connect(g); g.connect(ac.destination);
-        osc.frequency.value = 480;
-        const t = ac.currentTime;
-        g.gain.setValueAtTime(0.2, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
-        osc.start(t); osc.stop(t + 1.0);
-        setTimeout(ring, 2800);
-      }
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const t = ac.currentTime + delay;
+        g.gain.setValueAtTime(0.001, t);
+        g.gain.exponentialRampToValueAtTime(0.28, t + 0.025);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        osc.start(t);
+        osc.stop(t + 0.24);
+      });
+      setTimeout(ring, type === 'incoming' ? 3000 : 2500);
     } catch { /* audio blocked */ }
   }
   ring();

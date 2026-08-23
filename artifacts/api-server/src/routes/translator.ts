@@ -45,37 +45,46 @@ router.get(
   },
 );
 
+const createTranslatorSession = (req: any, res: any): void => {
+  try {
+    const payload: TranslatorTokenPayload = {
+      userId: req.userId,
+      email: req.userEmail,
+      name: req.userName,
+      purpose: "translator",
+    };
+
+    const token = (jwt as any).sign(
+      payload,
+      process.env.SESSION_SECRET,
+      {
+        expiresIn: TRANSLATOR_TOKEN_TTL,
+      },
+    );
+
+    res.json({
+      ok: true,
+      token,
+      expiresIn: 300,
+    });
+  } catch {
+    res.status(500).json({
+      error: "Unable to create translator session",
+    });
+  }
+};
+
+router.post(
+  "/session",
+  requireAuth,
+  createTranslatorSession,
+);
+
+// Kept for older clients while the frontend/API contract migrates to POST.
 router.get(
   "/session",
   requireAuth,
-  (req: any, res): void => {
-    try {
-      const payload: TranslatorTokenPayload = {
-        userId: req.userId,
-        email: req.userEmail,
-        name: req.userName,
-        purpose: "translator",
-      };
-
-      const token = (jwt as any).sign(
-        payload,
-        process.env.SESSION_SECRET,
-        {
-          expiresIn: TRANSLATOR_TOKEN_TTL,
-        },
-      );
-
-      res.json({
-        ok: true,
-        token,
-        expiresIn: 300,
-      });
-    } catch {
-      res.status(500).json({
-        error: "Unable to create translator session",
-      });
-    }
-  },
+  createTranslatorSession,
 );
 
 function sendJson(

@@ -216,6 +216,31 @@ async function runPushSchemaMigration() {
   }
 }
 
+/** Idempotent migration: optional catalog displayed in active calls. */
+async function runLiveServicesMigration() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS live_services (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL,
+        business_name TEXT,
+        image_url TEXT,
+        cta_label TEXT,
+        cta_url TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort INTEGER NOT NULL DEFAULT 100,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    logger.info("Live services catalog migration complete");
+  } catch (err) {
+    logger.error({ err }, "Live services catalog migration FAILED");
+  }
+}
+
 /** Idempotent migration: fraud_events table, user lockout columns, tx USD amount column. */
 async function runFraudSchemaMigration() {
   try {
@@ -312,6 +337,7 @@ server.listen(port, () => {
     await runFraudSchemaMigration();
     await runTranslationPreferencesMigration();
     await runPushSchemaMigration();
+    await runLiveServicesMigration();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
     clearLegacyPlainPins();
     // Sync all existing DB users into Stream so they're searchable

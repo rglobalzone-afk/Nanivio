@@ -25,6 +25,7 @@ import p2pRouter from "./p2p";
 import escrowRouter from "./escrow";
 import paidCallsRouter from "./paid-calls";
 import translatorRouter from "./translator";
+import liveServicesRouter from "./live-services";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(p2pRouter);
 router.use(escrowRouter);
 router.use(paidCallsRouter);
 router.use('/translator', translatorRouter);
+router.use(liveServicesRouter);
 
 export default router;

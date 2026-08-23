@@ -19,6 +19,7 @@ import {
 import { useAgoraCall } from '@/contexts/agora-call';
 import { useToast } from '@/hooks/use-toast';
 import { RealtimeTranslatorPanel } from '@/components/realtime-translator';
+import { LiveServicesDrawer } from '@/components/live-services-drawer';
 
 /* ─── active call UI ─── */
 function CallUI() {
@@ -112,6 +113,14 @@ function CallUI() {
       )}
 
       {/* ── Controls — bottom center ── */}
+      <div className="absolute inset-x-0 bottom-[4.75rem] z-10 flex justify-center px-4">
+        <div className="rounded-full border border-cyan-300/15 bg-slate-950/55 px-3 py-1 text-[11px] text-white/60 backdrop-blur">
+          <span className="font-semibold text-cyan-200">Langpretation</span>
+          <span className="mx-1.5 text-white/30">·</span>
+          <span>{translatorOpen ? 'Translator open · transcript will appear here' : 'Ready when you need it'}</span>
+        </div>
+      </div>
+      <LiveServicesDrawer />
       <div className="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-5">
         <button
           onClick={() => setTranslatorOpen(true)}

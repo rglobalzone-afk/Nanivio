@@ -102,4 +102,7 @@ app.use("/api/crypto", transactionLimiter);
 
 app.use("/api", router);
 
+app.get('/', (_req, res) => {
+  res.send('Nanivio Backend Engine is running successfully!');
+});
 export default app;
